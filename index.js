@@ -116,6 +116,10 @@ instance.prototype.MIDI_channels = [];
 
 instance.prototype.MIDI_velocity = [];
 
+instance.prototype.MIDI_MCC_controllernumber = [];
+
+instance.prototype.MIDI_MCC_controllervalue = [];
+
 instance.prototype.MSC_deviceid = [];
 
 instance.prototype.MSC_commandformat = [
@@ -156,6 +160,8 @@ instance.prototype.init = function () {
 
 	self.status(self.STATUS_OK);
 
+	self.init_presets();
+
 	//self.initModule();
 };
 
@@ -177,7 +183,8 @@ instance.prototype.initModule = function () {
 	self.MIDI_outputs_list = [];
 	self.MIDI_channels = [];
 	self.MIDI_velocity = [];
-	
+	self.MIDI_MCC_controllernumber = [];
+	self.MIDI_MCC_controllervalue = [];
 	self.MSC_deviceid = [];
 	
 	self.getRest('/midi_inputs', self.config.host, self.config.port).then(function(arrResult) {
@@ -238,6 +245,21 @@ instance.prototype.initModule = function () {
 		self.MIDI_velocity.push(listObj);
     }
 	
+	//build MIDI MCC Control Number List
+	for (let i = 0; i < 128; i++) {
+        let listObj = {};
+		listObj.id = i;
+		listObj.label = i + '';
+		self.MIDI_MCC_controllernumber.push(listObj);
+    }
+
+    //build MIDI MCC Control Value list
+	for (let i = 0; i < 128; i++) {
+        let listObj = {};
+		listObj.id = i;
+		listObj.label = i + '';
+		self.MIDI_MCC_controllervalue.push(listObj);
+    }
 	///build MIDI Show Control Device ID list
 	for (let i = 0; i < 112; i++) {
 		let listObj = {};
@@ -285,6 +307,14 @@ instance.prototype.config_fields = function () {
 			default: 4000,
 			width: 4,
 			regex: self.REGEX_PORT
+		},
+		{
+			type: 'textinput',
+			id: 'defaultmidiinterface',
+			label: 'Default Midi Interface',
+			default: 0,
+			width: 2,
+			// regex: self.REGEX_PORT
 		}
 	]
 }
@@ -333,6 +363,42 @@ instance.prototype.actions = function (system) {
 					choices: self.MIDI_velocity,
 					default: '1',
 					tooltip: 'MIDI Velocity to send.'
+				}
+			]
+		},
+		'midi_MCC': {
+			label: 'Send MIDI Control Change',
+			options: [
+				{
+					type: 'dropdown',
+					label: 'MIDI Port',
+					id: 'midiport',
+					choices: self.MIDI_outputs_list,
+					tooltip: 'MIDI Port to control.'
+				},
+				{
+					type: 'dropdown',
+					label: 'MIDI Channel',
+					id: 'channel',
+					choices: self.MIDI_channels,
+					default: '0',
+					tooltip: 'MIDI Channel to send.'
+				},
+				{
+					type: 'dropdown',
+					label: 'MCC Controller Number',
+					id: 'mcccontrollernumber',
+					choices: self.MIDI_MCC_controllernumber,
+					default: '0',
+					tooltip: 'MIDI Control Change to Send.'
+				},
+				{
+					type: 'dropdown',
+					label: 'MCC Controller Value',
+					id: 'mcccontrollervalue',
+					choices: self.MIDI_MCC_controllervalue,
+					default: '0',
+					tooltip: 'MIDI Control Change Value to Send.'
 				}
 			]
 		},
@@ -433,6 +499,11 @@ instance.prototype.action = function (action) {
 	
 	var host = self.config.host;
 	var port = self.config.port;
+	var midiinterface = self.config.defaultmidiinterface;
+
+	if (options.midiport == null) {
+		options.midiport =self.MIDI_outputs_list[midiinterface]['id'];
+	}
 
 	switch (action.action) {
 		case 'midi_noteon':
@@ -449,6 +520,20 @@ instance.prototype.action = function (action) {
 				self.status(self.STATUS_ERROR, arrResult);
 			});
 			break;
+        case 'midi_MCC':
+        	self.postRest('/sendmidi', host, port,
+        		{ midiport: options.midiport, midicommand: 'mcc', param: parseInt(options.mcccontrollernumber), channel: parseInt(options.channel), setvalue: parseInt(options.mcccontrollervalue) }
+        	)
+			.then(function(arrResult) {
+				if (arrResult[2].error) {
+					//throw an error
+					self.status(self.STATUS_ERROR, arrResult[2].error);
+				}
+			})  
+			.catch(function(arrResult) {
+				self.status(self.STATUS_ERROR, arrResult);
+			});
+			break;      	
 		case 'midi_noteoff':
 			self.postRest('/sendmidi', host, port,
 				{ midiport: options.midiport, midicommand: 'noteoff', note: parseInt(options.note), channel: parseInt(options.channel), velocity: parseInt(options.velocity) }
@@ -551,7 +636,6 @@ instance.prototype.doRest = function(method, cmd, host, port, body) {
 		}
 
 	});
-
 };
 
 instance.prototype.makeUrl = function(cmd, host, port) {
@@ -562,8 +646,274 @@ instance.prototype.makeUrl = function(cmd, host, port) {
 	}
 
 	return 'http://' + host + ':' + port + cmd;
-
 };
+
+instance.prototype.init_presets = function () {
+	var self = this;
+
+	var presets = [
+		{
+			category: 'Roland V800',
+			label: 'Toggle Output Fade',
+			bank: {
+				style: 'text',
+				text: 'Output Fade',
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(255,128,0)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+					    mcccontrollervalue: '127',
+					    mcccontrollernumber: '19',
+					    channel: '0'
+					}
+				}
+			]
+		},
+		{
+			category: 'Roland V800',
+			label: 'Toggle USK',
+			bank: {
+				style: 'text',
+				text: 'USK On',
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(255,128,0)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+					    mcccontrollervalue: '127',
+					    mcccontrollernumber: '65',
+					    channel: '0'
+					}
+				}
+			]
+		},
+		{
+			category: 'Roland V800',
+			label: 'Toggle DSK',
+			bank: {
+				style: 'text',
+				text: 'DSK On',
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(255,128,0)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+					    mcccontrollervalue: '127',
+					    mcccontrollernumber: '67',
+					    channel: '0'
+					}
+				}
+			]
+		},
+		{
+			category: 'Roland V800',
+			label: 'Auto Transition',
+			bank: {
+				style: 'text',
+				text: 'Auto',
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(255,128,0)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+					    mcccontrollervalue: '127',
+					    mcccontrollernumber: '66',
+					    channel: '0'
+					}
+				}
+			]
+		},
+		{
+			category: 'Roland V800',
+			label: 'Cut Transition',
+			bank: {
+				style: 'text',
+				text: 'Cut',
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(255,128,0)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+					    mcccontrollervalue: '127',
+					    mcccontrollernumber: '68',
+					    channel: '0'
+					}
+				}
+			]
+		},
+		{
+			category: 'Roland V800',
+			label: 'PIP 1 On',
+			bank: {
+				style: 'text',
+				text: 'PIP 1',
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(200,27,214)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+					    mcccontrollervalue: '0',
+					    mcccontrollernumber: '64',
+					    channel: '0'
+					}
+				}
+			]
+		},
+		{
+			category: 'Roland V800',
+			label: 'PIP 2 On',
+			bank: {
+				style: 'text',
+				text: 'PIP 2',
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(200,27,214)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+					    mcccontrollervalue: '1',
+					    mcccontrollernumber: '64',
+					    channel: '0'
+					}
+				}
+			]
+		},
+		{
+			category: 'Roland V800',
+			label: 'PIP 3 On',
+			bank: {
+				style: 'text',
+				text: 'PIP 3',
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(200,27,214)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+					    mcccontrollervalue: '2',
+					    mcccontrollernumber: '64',
+					    channel: '0'
+					}
+				}
+			]
+		},
+		{
+			category: 'Roland V800',
+			label: 'PIP 4 On',
+			bank: {
+				style: 'text',
+				text: 'PIP 4',
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(200,27,214)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+					    mcccontrollervalue: '3',
+					    mcccontrollernumber: '64',
+					    channel: '0'
+					}
+				}
+			]
+		}								
+	];
+
+	for (var inps = 0; inps < 10; ++inps) {
+		
+		presets.push({
+			category: 'Roland V800 PST' ,
+			label: 'Preview button for ' + (inps+1),
+			bank: {
+				style: 'text',
+				text: 'PST ' + (inps+1),
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(00,204,00)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+						mcccontrollervalue: inps,
+					    mcccontrollernumber: '13',
+					    channel: '0'
+					}
+				}
+			]
+		});
+		presets.push({ 
+			category: 'V800 PGM',
+			label: 'Program button for ' + (inps+1),
+			bank: {
+				style: 'text',
+				text: 'PGM ' + (inps+1),
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(204,0,0)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+						mcccontrollervalue: inps,
+					    mcccontrollernumber: '12',
+					    channel: '0'
+					}
+				}
+			]
+		});	
+		presets.push({
+			category: 'V800 DSK/Aux',
+			label: 'DSK button for ' + (inps+1),
+			bank: {
+				style: 'text',
+				text: 'DSK ' + (inps+1),
+				size: '14',
+				color: self.rgb(255,255,255),
+				bgcolor: self.rgb(0,0,204)
+			},
+			actions: [
+				{
+					action: 'midi_MCC',
+					options: {
+						mcccontrollervalue: inps,
+					    mcccontrollernumber: '16',
+					    channel: '0'
+					}
+				}
+			]
+		});	
+	}
+
+	self.setPresetDefinitions(presets);
+}
+
+
 
 instance_skel.extendedBy(instance);
 exports = module.exports = instance;
